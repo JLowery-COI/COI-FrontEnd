@@ -1,0 +1,40 @@
+version: 0.2
+
+phases:
+  install:
+    runtime-versions:
+      nodejs: 12
+    commands:
+      - echo Installing source NPM dependencies...
+      - npm install
+      - npm install -g @angular/cli
+  pre_build:
+    commands:
+      - echo node version...
+      - node -v
+      - echo npm version...
+      - npm -v
+  build:
+    commands:
+      # Builds Angular application. You can also build using custom environment here like mock or staging
+      - echo Build started on `date`
+      - npm run build:${BUILD_ENV}
+
+  post_build:
+    commands:
+      - echo Distribute to S3.
+      - aws s3 sync dist/coi-optimizer-web/ s3://${S3_BUCKET} --delete --region ${S3_REGION}
+      - echo Update Cache-Control Header on index.html...
+      - aws s3 cp s3://${S3_BUCKET}/index.html s3://${S3_BUCKET}/index.html --region ${S3_REGION} --cache-control "no-cache,no-store" --metadata-directive "REPLACE"
+      - echo Upload build to S3 Archive Bucket to preserv history.
+      - aws s3 cp dist/coi-optimizer-web/ s3://${S3_BUCKET_ARCHIVE}/${CODEBUILD_BUILD_ID}/ --region ${S3_REGION} --recursive
+      - echo Build completed on `date`
+      - echo Invalidate resources on CloudFront
+      - aws cloudfront create-invalidation --distribution-id ${DISTRIBUTION_ID_COIOPTIMIZER} --paths '/*'
+      - aws cloudfront create-invalidation --distribution-id ${DISTRIBUTION_ID_UBERFORENERGY} --paths '/*'
+
+artifacts:
+    files:
+        - '**/*'
+    discard-paths: yes
+    base-directory: 'dist*'
